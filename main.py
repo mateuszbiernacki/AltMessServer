@@ -259,7 +259,7 @@ def invite_to_group():
         return jsonify({'r': f'{e}'})
 
 
-@app.route('/list_of_group_members')
+@app.route('/list_of_group_members', methods=['POST'])
 def get_list_of_group_members():
     try:
         login = request.json['login']
