@@ -373,8 +373,10 @@ def get_dms():
             uid = get_uid(login)
 
             friend_id = get_uid(friend)
-            query = 'select u_id_from, content, date from dms where (u_id_from=:u_id1 and u_id_to=:u_id2) ' \
-                    'or (u_id_from=:u_id2 and u_id_to=:u_id1)'
+            query = 'select u_id_from, content, date, dm_id from ' \
+                    '(select u_id_from, content, date, dm_id from dms where (u_id_from=:u_id1 and u_id_to=:u_id2) ' \
+                    'or (u_id_from=:u_id2 and u_id_to=:u_id1) order by dm_id desc limit 50)' \
+                    'order by dm_id asc;'
             rows = cursor.execute(query, {
                 'u_id1': uid,
                 'u_id2': friend_id
@@ -412,7 +414,9 @@ def get_gms():
             return jsonify({'r': 'Wrong group.'})
         elif logged_users[login] == token:
             uid = get_uid(login)
-            query = 'select u_id, content, date from gms where g_id=:g_id'
+            query = 'select u_id, content, date, dm_id from ' \
+                    '(select u_id, content, date, dm_id from gms where g_id=:g_id order by dm_id desc limit 50)' \
+                    'order by dm_id asc'
             rows = cursor.execute(query, {
                 'g_id': g_id
             })
@@ -517,6 +521,77 @@ def list_of_created_group():
             return jsonify({'r': 'ok', 'groups': rows.fetchall()})
         else:
             return jsonify({'r': 'Wrong token.'})
+    except Exception as e:
+        return jsonify({'r': f'{e}'})
+
+
+@app.route('/get_old_messages', methods=['POST'])
+def get_old_messages():
+    try:
+        login = request.json['login']
+        token = request.json['token']
+        offset = request.json['offset']
+        type = request.json['type']
+        if login not in logged_users:
+            return jsonify({'r': 'Not logged.'})
+        elif logged_users[login] != token:
+            return jsonify({'r': 'Wrong token.'})
+        db_con = sqlite3.connect(PATH_TO_USERS_DATABASE)
+        cursor = db_con.cursor()
+        if type == "dm":
+            friend = request.json['friend']
+            row = cursor.execute('select * from users where u_id=:u_id', {
+                'u_id': get_uid(friend)
+            }).fetchone()
+            if not row:
+                return jsonify({'r': 'Wrong friend login.'})
+            uid = get_uid(login)
+
+            friend_id = get_uid(friend)
+            query = 'select u_id_from, content, date, dm_id from ' \
+                    '(select u_id_from, content, date, dm_id from dms where (u_id_from=:u_id1 and u_id_to=:u_id2) ' \
+                    'or (u_id_from=:u_id2 and u_id_to=:u_id1) order by dm_id desc limit 50 offset :offset)' \
+                    'order by dm_id asc;'
+            rows = cursor.execute(query, {
+                'u_id1': uid,
+                'u_id2': friend_id,
+                'offset': offset
+            })
+
+            temp_history = rows.fetchall()
+            history = []
+            db_con.commit()
+            db_con.close()
+            for e in temp_history:
+                tup = [get_login(e[0]), e[1], e[2]]
+                history.append(tup)
+            return jsonify({'r': 'ok', 'history': history})
+        elif type == "gm":
+            g_id = request.json['group_id']
+            row = cursor.execute('select * from groups_members where u_id=:u_id and g_id=:g_id', {
+                'u_id': get_uid(login),
+                'g_id': g_id
+            }).fetchone()
+            if not row:
+                return jsonify({'r': 'Wrong group.'})
+            query = 'select u_id, content, date, dm_id from ' \
+                    '(select u_id, content, date, dm_id from gms where g_id=:g_id order by dm_id desc limit 50 offset :offset)' \
+                    'order by dm_id asc'
+            rows = cursor.execute(query, {
+                'g_id': g_id,
+                'offset': offset
+            })
+            temp_history = rows.fetchall()
+            history = []
+            db_con.commit()
+            db_con.close()
+            for e in temp_history:
+                tup = [get_login(e[0]), e[1], e[2]]
+                history.append(tup)
+            return jsonify({'r': 'ok', 'history': history})
+        db_con.commit()
+        db_con.close()
+        return 'dupa'
     except Exception as e:
         return jsonify({'r': f'{e}'})
 
